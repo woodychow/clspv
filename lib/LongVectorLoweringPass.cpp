@@ -414,6 +414,16 @@ Value *convertEquivalentValue(IRBuilder<> &B, Value *V, Type *EquivalentTy,
       Value *Scalar = B.CreateExtractValue(V, i);
       NewValue = B.CreateInsertElement(NewValue, Scalar, i);
     }
+  } else if (EquivalentTy->isArrayTy() && V->getType()->isArrayTy()) {
+    assert(EquivalentTy->getArrayNumElements() ==
+           V->getType()->getArrayNumElements());
+    unsigned Arity = EquivalentTy->getArrayNumElements();
+    Type *ElementType = EquivalentTy->getArrayElementType();
+    for (unsigned i = 0; i < Arity; ++i) {
+      Value *Element = B.CreateExtractValue(V, i);
+      Value *NewElement = convertEquivalentValue(B, Element, ElementType, DL);
+      NewValue = B.CreateInsertValue(NewValue, NewElement, i);
+    }
   } else {
     assert(EquivalentTy->isArrayTy());
     assert(V->getType()->isVectorTy());
@@ -846,6 +856,17 @@ Value *clspv::LongVectorLoweringPass::visitConstant(Constant &Cst) {
     }
 
     return ConstantArray::get(cast<ArrayType>(EquivalentTy), Scalars);
+  }
+
+  if (auto *Array = dyn_cast<ConstantArray>(&Cst)) {
+    assert(isa<ArrayType>(EquivalentTy));
+
+    SmallVector<Constant *, 16> Elements;
+    for (unsigned i = 0; i < Array->getNumOperands(); ++i) {
+      Elements.push_back(cast<Constant>(visitOrSelf(Array->getOperand(i))));
+    }
+
+    return ConstantArray::get(cast<ArrayType>(EquivalentTy), Elements);
   }
 
 #ifndef NDEBUG
@@ -1618,6 +1639,9 @@ bool clspv::LongVectorLoweringPass::runOnGlobals(Module &M) {
           EquivalentInitializer, "",
           /* insert before: */ &GV, GV.getThreadLocalMode(),
           GV.getAddressSpace(), GV.isExternallyInitialized());
+      if (GV.getType() == EquivalentGV->getType()) {
+        GV.replaceAllUsesWith(EquivalentGV);
+      }
       EquivalentGV->takeName(&GV);
       EquivalentGV->setAlignment(GV.getAlign());
       EquivalentGV->copyMetadata(&GV, /* offset: */ 0);

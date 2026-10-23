@@ -1,10 +1,16 @@
 ; RUN: clspv-opt --passes=long-vector-lowering,instcombine %s -o %t
 ; RUN: FileCheck %s < %t
 ;
-; This tests covers UndefValue, ConstantAggregateZero and ConstantDataVector.
+; This test covers UndefValue, ConstantAggregateZero, ConstantDataVector,
+; ConstantVector, and ConstantArray.
 
 target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
 target triple = "spirv32-unknown-vulkan"
+
+; CHECK-NOT: <8 x
+; CHECK-NOT: <16 x
+
+@arr = addrspace(2) constant [3 x <8 x i32>] [<8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>, <8 x i32> zeroinitializer, <8 x i32> <i32 0, i32 poison, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>]
 
 define spir_func <8 x float> @test1() {
   ret <8 x float> zeroinitializer
@@ -30,8 +36,19 @@ define spir_func <8 x i32> @test6() {
   ret <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
 }
 
+define spir_func [2 x <8 x i32>] @test7() {
+  ret [2 x <8 x i32>] [<8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>, <8 x i32> zeroinitializer]
+}
+
+; CHECK: @arr = addrspace(2) constant [3 x [[INT8:\[8 x i32\]]]] {{\[}}[[INT8]] [i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7], [[INT8]] zeroinitializer, [[INT8]] [i32 0, i32 poison, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7]]
+
 ; CHECK-LABEL: define spir_func
-; CHECK-SAME: [[INT8:\[8 x i32\]]]
+; CHECK-SAME: [2 x [[INT8]]]
+; CHECK-SAME: @test7()
+; CHECK-NEXT: ret [2 x [[INT8]]] {{\[}}[[INT8]] [i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7], [[INT8]] zeroinitializer]
+
+; CHECK-LABEL: define spir_func
+; CHECK-SAME: [[INT8]]
 ; CHECK-SAME: @test6()
 ; CHECK-NEXT: ret [[INT8]] [i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7]
 
